@@ -1,0 +1,60 @@
+name: Build Quartus Runner Image
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      quartus_tag:
+        description: "Quartus base image tag (e.g. agilex3, agilex5, agilex7)"
+        required: false
+        default: "agilex3"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/quartus-runner
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build & Push
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        quartus_tag: [agilex3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ matrix.quartus_tag }}
+            type=sha,prefix=${{ matrix.quartus_tag }}-
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            QUARTUS_TAG=${{ matrix.quartus_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
