@@ -1,5 +1,5 @@
 ARG QUARTUS_TAG=agilex3
-FROM alterafpga/quartuspro-v25.3:${QUARTUS_TAG}
+FROM alterafpga/quartuspro-v25.1:${QUARTUS_TAG}
 
 USER root
 
