@@ -26,6 +26,23 @@ RUN if command -v apt-get >/dev/null 2>&1; then \
     done && \
     rm /tmp/*.crt
 
+# Install PowerShell
+RUN if command -v apt-get >/dev/null 2>&1; then \
+      apt-get update && \
+      apt-get install -y --no-install-recommends wget apt-transport-https && \
+      . /etc/os-release && \
+      wget -q "https://packages.microsoft.com/config/debian/${VERSION_ID}/packages-microsoft-prod.deb" -O /tmp/packages-microsoft-prod.deb && \
+      dpkg -i /tmp/packages-microsoft-prod.deb && \
+      rm /tmp/packages-microsoft-prod.deb && \
+      apt-get update && \
+      apt-get install -y --no-install-recommends powershell && \
+      rm -rf /var/lib/apt/lists/*; \
+    elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then \
+      (dnf install -y powershell 2>/dev/null || \
+       yum install -y https://packages.microsoft.com/config/rhel/8/packages-microsoft-prod.rpm 2>/dev/null && \
+       yum install -y powershell 2>/dev/null || true); \
+    fi
+
 # Ensure Node.js (used by actions/checkout) also trusts the certs
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 
