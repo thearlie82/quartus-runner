@@ -43,6 +43,9 @@ RUN if command -v apt-get >/dev/null 2>&1; then \
        yum install -y powershell 2>/dev/null || true); \
     fi
 
+# Set Quartus environment
+ENV QUARTUS_ROOTDIR=/opt/altera/quartus
+
 # Ensure Node.js (used by actions/checkout) also trusts the certs
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 
