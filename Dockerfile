@@ -10,11 +10,11 @@ COPY adt-certserv01-ca.crt /tmp/
 COPY adt-rootcert01-ca.crt /tmp/
 
 RUN if command -v apt-get >/dev/null 2>&1; then \
-      apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*; \
+      apt-get update && apt-get install -y --no-install-recommends git ca-certificates python3 && rm -rf /var/lib/apt/lists/*; \
       cp /tmp/*.crt /usr/local/share/ca-certificates/; \
       update-ca-certificates; \
     elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then \
-      (dnf install -y git ca-certificates 2>/dev/null || yum install -y git ca-certificates 2>/dev/null || true); \
+      (dnf install -y git ca-certificates python3 2>/dev/null || yum install -y git ca-certificates python3 2>/dev/null || true); \
       cp /tmp/*.crt /etc/pki/ca-trust/source/anchors/ 2>/dev/null || true; \
       (update-ca-trust 2>/dev/null || true); \
     fi && \
