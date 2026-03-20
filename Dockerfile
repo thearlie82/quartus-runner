@@ -31,7 +31,7 @@ RUN if command -v apt-get >/dev/null 2>&1; then \
       apt-get update && \
       apt-get install -y --no-install-recommends wget apt-transport-https && \
       . /etc/os-release && \
-      wget -q "https://packages.microsoft.com/config/debian/${VERSION_ID}/packages-microsoft-prod.deb" -O /tmp/packages-microsoft-prod.deb && \
+      wget -q "https://packages.microsoft.com/config/${ID}/${VERSION_ID}/packages-microsoft-prod.deb" -O /tmp/packages-microsoft-prod.deb && \
       dpkg -i /tmp/packages-microsoft-prod.deb && \
       rm /tmp/packages-microsoft-prod.deb && \
       apt-get update && \
