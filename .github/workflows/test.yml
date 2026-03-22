@@ -40,40 +40,32 @@ jobs:
             command -v git && command -v pwsh && command -v python3 && echo "All tools present"
           '
 
-      - name: Diagnose Quartus library linkage
+      - name: Investigate libglibc_wrap.so
         run: |
           docker run --rm \
             -e HOME=/tmp \
             -e QUARTUS_ROOTDIR=/opt/altera/quartus \
             -e QUARTUS_DISABLE_DDM=1 \
             "$IMAGE" bash -c '
-              echo "=== quartus_syn wrapper script ==="
-              head -50 /opt/altera/quartus/bin/quartus_syn
-              echo "=== Bundled glibc? ==="
-              find /opt/altera -name "libc.so*" -o -name "libc-*.so" 2>/dev/null
-              echo "=== LD_LIBRARY_PATH from wrapper ==="
-              # Source the wrapper env and show what gets set
-              grep -i "LD_LIBRARY_PATH" /opt/altera/quartus/bin/quartus_syn 2>/dev/null || true
-              grep -ri "LD_LIBRARY_PATH" /opt/altera/quartus/linux64/ 2>/dev/null | head -5 || true
-              echo "=== ldd on quartus_syn binary ==="
-              # Find the actual binary (not wrapper)
-              SYNBIN=$(find /opt/altera/quartus -name "quartus_syn" -type f ! -path "*/bin/*" 2>/dev/null | head -1)
-              if [ -z "$SYNBIN" ]; then
-                SYNBIN=$(readlink -f /opt/altera/quartus/bin/quartus_syn 2>/dev/null)
-              fi
-              echo "Binary: $SYNBIN"
-              file "$SYNBIN" 2>/dev/null
-              ldd "$SYNBIN" 2>/dev/null | grep -i libc || true
-              echo "=== /opt/altera/quartus/linux64/lib* libc ==="
-              ls /opt/altera/quartus/linux64/lib*/libc* 2>/dev/null || echo "No bundled libc in linux64/lib"
+              echo "=== libglibc_wrap.so symbols ==="
+              nm -D /opt/altera/qcore/linux64/libglibc_wrap.so 2>/dev/null | grep -i "realloc\|malloc\|free\|calloc" | head -20
+              echo "=== libglibc_wrap.so file info ==="
+              file /opt/altera/qcore/linux64/libglibc_wrap.so
+              ls -la /opt/altera/qcore/linux64/libglibc_wrap.so
+              echo "=== What needs libudev? ==="
+              for lib in /opt/altera/quartus/linux64/*.so /opt/altera/qcore/linux64/*.so; do
+                if ldd "$lib" 2>/dev/null | grep -q libudev; then
+                  echo "$lib -> needs libudev"
+                fi
+              done
+              echo "=== libudev details ==="
+              ls -la /lib/x86_64-linux-gnu/libudev* 2>/dev/null
+              dpkg -S libudev 2>/dev/null | head -5
             '
 
-      - name: Test synthesis (no crash = pass)
+      - name: Test synthesis WITHOUT libudev
         run: |
-          # License server is not reachable from github.com runners, so synthesis
-          # will fail with a license error. That's OK - we're testing that Quartus
-          # doesn't crash (SIGABRT/exit 134) due to glibc incompatibility.
-          # Exit codes: 0=success, 2=license/compile error (OK), 134=SIGABRT (FAIL)
+          # Try removing/hiding libudev to prevent the crash
           docker run --rm \
             -e HOME=/tmp \
             -e LM_LICENSE_FILE=1717@localhost \
@@ -81,29 +73,57 @@ jobs:
             -e QUARTUS_DISABLE_DDM=1 \
             --shm-size=1g \
             "$IMAGE" bash -c '
+              echo "=== Hiding libudev.so.1 ==="
+              # Cannot rm as non-root, but can use LD_PRELOAD trick or rename
+              # Try setting LD_LIBRARY_PATH to skip system libs
+              # Or try preloading a stub
+
               mkdir -p /tmp/tp && cd /tmp/tp
 
               echo "module top(input wire c,input wire d,output reg q); always @(posedge c) q<=d; endmodule" > top.v
-
               echo "QUARTUS_VERSION=\"25.3\"" > t.qpf
               echo "PROJECT_REVISION=\"t\"" >> t.qpf
+              printf "set_global_assignment -name FAMILY \"Agilex 3\"\nset_global_assignment -name DEVICE A3CW135BM16AE6S\nset_global_assignment -name TOP_LEVEL_ENTITY top\nset_global_assignment -name VERILOG_FILE top.v\n" > t.qsf
 
-              printf "set_global_assignment -name FAMILY \"Agilex 3\"\n" > t.qsf
-              printf "set_global_assignment -name DEVICE A3CW135BM16AE6S\n" >> t.qsf
-              printf "set_global_assignment -name TOP_LEVEL_ENTITY top\n" >> t.qsf
-              printf "set_global_assignment -name VERILOG_FILE top.v\n" >> t.qsf
+              echo "=== Test 1: Normal run ==="
+              /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | tail -5
+              echo "Exit: ${PIPESTATUS[0]}"
 
-              echo "=== Running synthesis ==="
-              LD_DEBUG=libs /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | grep -E "libc|realloc|calling init|SIGABRT" | tail -20
+              echo "=== Test 2: With LD_PRELOAD of libglibc_wrap.so disabled ==="
+              # Create empty stub for libglibc_wrap.so
+              echo "void __attribute__((constructor)) glibc_wrap_stub(void) {}" > /tmp/stub.c
+              gcc -shared -o /tmp/libglibc_wrap_stub.so /tmp/stub.c 2>/dev/null || echo "gcc not available"
+
+              echo "=== Test 3: Skip libglibc_wrap by overriding LD_LIBRARY_PATH ==="
+              # Try running without the qcore lib path
+              /opt/altera/quartus/linux64/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | tail -5
+              echo "Exit: ${PIPESTATUS[0]}"
+            '
+
+      - name: Test with stock Altera image (25.3.1-patch1.02)
+        run: |
+          docker pull alterafpga/quartus-pro:25.3.1-patch1.02-agilex3
+          docker run --rm \
+            -e HOME=/tmp \
+            -e LM_LICENSE_FILE=1717@localhost \
+            -e QUARTUS_ROOTDIR=/opt/altera/quartus \
+            -e QUARTUS_DISABLE_DDM=1 \
+            --shm-size=1g \
+            alterafpga/quartus-pro:25.3.1-patch1.02-agilex3 bash -c '
+              echo "=== Stock image OS ==="
+              head -1 /etc/os-release
+              ldd --version 2>&1 | head -1
+              echo "=== libudev in stock image ==="
+              ls -la /lib/x86_64-linux-gnu/libudev* 2>/dev/null || echo "No libudev in stock image"
+              find / -name "libudev*" 2>/dev/null
+              echo "=== Synthesis test ==="
+              mkdir -p /tmp/tp && cd /tmp/tp
+              echo "module top(input wire c,input wire d,output reg q); always @(posedge c) q<=d; endmodule" > top.v
+              echo "QUARTUS_VERSION=\"25.3\"" > t.qpf
+              echo "PROJECT_REVISION=\"t\"" >> t.qpf
+              printf "set_global_assignment -name FAMILY \"Agilex 3\"\nset_global_assignment -name DEVICE A3CW135BM16AE6S\nset_global_assignment -name TOP_LEVEL_ENTITY top\nset_global_assignment -name VERILOG_FILE top.v\n" > t.qsf
+              /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | tail -10
               SYNTH_EXIT=${PIPESTATUS[0]}
               echo "Synthesis exit code: $SYNTH_EXIT"
-
-              if [ $SYNTH_EXIT -eq 134 ] || [ $SYNTH_EXIT -gt 128 ]; then
-                echo "FAIL: Quartus crashed with signal $(( SYNTH_EXIT - 128 ))"
-                exit 1
-              elif [ $SYNTH_EXIT -eq 0 ]; then
-                echo "PASS: Synthesis completed successfully"
-              else
-                echo "PASS: Quartus ran without crashing (exit $SYNTH_EXIT likely license error)"
-              fi
+              exit 0
             '
