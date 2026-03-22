@@ -43,6 +43,13 @@ RUN if command -v apt-get >/dev/null 2>&1; then \
        yum install -y powershell 2>/dev/null || true); \
     fi
 
+# Verify jemalloc was installed correctly
+RUN ls -la /usr/lib/x86_64-linux-gnu/libjemalloc* || \
+    (echo "ERROR: jemalloc not found at expected path!" && \
+     find / -name "libjemalloc*" 2>/dev/null && \
+     dpkg -L libjemalloc2 2>/dev/null && \
+     exit 1)
+
 # Set Quartus environment
 ENV QUARTUS_ROOTDIR=/opt/altera/quartus
 # Workaround glibc 2.39 mremap_chunk heap corruption with Quartus
