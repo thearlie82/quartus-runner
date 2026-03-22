@@ -42,6 +42,7 @@ jobs:
           echo 'QUARTUS_VERSION="25.3"' > /tmp/tp/t.qpf
           echo 'PROJECT_REVISION="t"' >> /tmp/tp/t.qpf
           printf 'set_global_assignment -name FAMILY "Agilex 3"\nset_global_assignment -name DEVICE A3CW135BM16AE6S\nset_global_assignment -name TOP_LEVEL_ENTITY top\nset_global_assignment -name VERILOG_FILE top.v\n' > /tmp/tp/t.qsf
+          chmod 777 /tmp/tp
 
       - name: "Test 1: Stock image with --net=host (official docs requirement)"
         run: |
@@ -125,6 +126,38 @@ jobs:
             "$STOCK" bash -c '
               cd /tmp/tp
               /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | tail -5
+              echo "Exit: ${PIPESTATUS[0]}"
+            ' || true
+          echo "Step completed"
+
+      - name: "Test 6: Custom image with --net=host (fix permissions)"
+        run: |
+          docker run --rm --net=host \
+            -e HOME=/tmp \
+            -e LM_LICENSE_FILE=1717@localhost \
+            -e QUARTUS_ROOTDIR=/opt/altera/quartus \
+            -e QUARTUS_DISABLE_DDM=1 \
+            --shm-size=1g \
+            -v /tmp/tp:/tmp/tp \
+            "$IMAGE" bash -c '
+              cd /tmp/tp
+              /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | tail -20
+              echo "Exit: ${PIPESTATUS[0]}"
+            ' || true
+          echo "Step completed"
+
+      - name: "Test 7: Stock image with --net=host (full output)"
+        run: |
+          docker run --rm --net=host \
+            -e HOME=/tmp \
+            -e LM_LICENSE_FILE=1717@localhost \
+            -e QUARTUS_ROOTDIR=/opt/altera/quartus \
+            -e QUARTUS_DISABLE_DDM=1 \
+            --shm-size=1g \
+            -v /tmp/tp:/tmp/tp \
+            "$STOCK" bash -c '
+              cd /tmp/tp
+              /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | tail -20
               echo "Exit: ${PIPESTATUS[0]}"
             ' || true
           echo "Step completed"
