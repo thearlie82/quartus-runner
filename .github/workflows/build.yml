@@ -47,7 +47,7 @@ jobs:
             type=raw,value=${{ matrix.quartus_tag }}
             type=sha,prefix=${{ matrix.quartus_tag }}-
 
-      - name: Build and push
+      - name: Build and push (no cache to ensure fresh build)
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -56,5 +56,13 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             QUARTUS_TAG=${{ matrix.quartus_tag }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          no-cache: true
+
+      - name: Verify jemalloc in image
+        env:
+          IMAGE_TAG: ${{ steps.meta.outputs.tags }}
+        run: |
+          FIRST_TAG=$(echo "$IMAGE_TAG" | head -1)
+          echo "Testing image: $FIRST_TAG"
+          docker run --rm "$FIRST_TAG" ls -la /usr/lib/x86_64-linux-gnu/libjemalloc.so.2
+          docker run --rm "$FIRST_TAG" dpkg -l libjemalloc2
