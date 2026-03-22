@@ -47,10 +47,11 @@ jobs:
             type=raw,value=${{ matrix.quartus_tag }}
             type=sha,prefix=${{ matrix.quartus_tag }}-
 
-      - name: Build and push (no cache to ensure fresh build)
+      - name: Build and push (Ubuntu 22.04 base with Quartus 25.3.1-patch1.02)
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: Dockerfile.ubuntu22
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -58,11 +59,11 @@ jobs:
             QUARTUS_TAG=${{ matrix.quartus_tag }}
           no-cache: true
 
-      - name: Verify jemalloc in image
+      - name: Verify image
         env:
           IMAGE_TAG: ${{ steps.meta.outputs.tags }}
         run: |
           FIRST_TAG=$(echo "$IMAGE_TAG" | head -1)
           echo "Testing image: $FIRST_TAG"
-          docker run --rm "$FIRST_TAG" ls -la /usr/lib/x86_64-linux-gnu/libjemalloc.so.2
-          docker run --rm "$FIRST_TAG" dpkg -l libjemalloc2
+          docker run --rm "$FIRST_TAG" ldd --version 2>&1 | head -1
+          docker run --rm "$FIRST_TAG" /opt/altera/quartus/bin/quartus_sh --version
