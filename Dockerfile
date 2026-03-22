@@ -10,7 +10,7 @@ COPY adt-certserv01-ca.crt /tmp/
 COPY adt-rootcert01-ca.crt /tmp/
 
 RUN if command -v apt-get >/dev/null 2>&1; then \
-      apt-get update && apt-get install -y --no-install-recommends git ca-certificates python3 && rm -rf /var/lib/apt/lists/*; \
+      apt-get update && apt-get install -y --no-install-recommends git ca-certificates python3 libjemalloc2 && rm -rf /var/lib/apt/lists/*; \
       cp /tmp/*.crt /usr/local/share/ca-certificates/; \
       update-ca-certificates; \
     elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then \
@@ -45,6 +45,8 @@ RUN if command -v apt-get >/dev/null 2>&1; then \
 
 # Set Quartus environment
 ENV QUARTUS_ROOTDIR=/opt/altera/quartus
+# Workaround glibc 2.39 mremap_chunk heap corruption with Quartus
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
 
 # Ensure Node.js (used by actions/checkout) also trusts the certs
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
