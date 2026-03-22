@@ -1,0 +1,86 @@
+name: Test Quartus Runner Image
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: thearlie82/quartus-runner
+
+jobs:
+  image-validation:
+    name: Image Validation (github.com)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate image basics
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:agilex3"
+          echo "=== Pulling image ==="
+          docker pull "$IMAGE"
+          echo "=== OS and glibc ==="
+          docker run --rm "$IMAGE" bash -c 'head -1 /etc/os-release && ldd --version 2>&1 | head -1'
+          echo "=== Quartus version ==="
+          docker run --rm "$IMAGE" /opt/altera/quartus/bin/quartus_sh --version
+          echo "=== Required tools ==="
+          docker run --rm "$IMAGE" bash -c 'command -v git && command -v pwsh && command -v python3 && echo "All tools present"'
+          echo "=== glibc 2.35 check ==="
+          docker run --rm "$IMAGE" bash -c 'ldd --version 2>&1 | grep -q "2\.35" && echo "PASS: glibc 2.35" || (echo "FAIL: wrong glibc" && exit 1)'
+
+  synthesis-test:
+    name: Synthesis Test (self-hosted)
+    runs-on: ghes-runner-dev-ethhw
+    container:
+      image: ghcr.io/thearlie82/quartus-runner:agilex3
+    env:
+      LM_LICENSE_FILE: 1717@adt-quartuslic.ad.adt.com.au
+      QUARTUS_ROOTDIR: /opt/altera/quartus
+      QUARTUS_DISABLE_DDM: 1
+    steps:
+      - name: Environment info
+        shell: bash {0}
+        run: |
+          set +e
+          export HOME=/tmp
+          echo "=== OS and glibc ==="
+          head -1 /etc/os-release
+          ldd --version 2>&1 | head -1
+          echo "=== Quartus ==="
+          /opt/altera/quartus/bin/quartus_sh --version 2>&1 | head -3
+          echo "=== /dev/shm ==="
+          df -h /dev/shm | tail -1
+
+      - name: Synthesize minimal test project
+        shell: bash {0}
+        run: |
+          export HOME=/tmp
+          mkdir -p /tmp/tp && cd /tmp/tp
+
+          # Minimal single flip-flop design targeting Agilex 3
+          echo 'module top(input wire c,input wire d,output reg q); always @(posedge c) q<=d; endmodule' > top.v
+
+          echo 'QUARTUS_VERSION="25.3"' > t.qpf
+          echo 'PROJECT_REVISION="t"' >> t.qpf
+
+          printf 'set_global_assignment -name FAMILY "Agilex 3"\n' > t.qsf
+          printf 'set_global_assignment -name DEVICE A3CW135BM16AE6S\n' >> t.qsf
+          printf 'set_global_assignment -name TOP_LEVEL_ENTITY top\n' >> t.qsf
+          printf 'set_global_assignment -name VERILOG_FILE top.v\n' >> t.qsf
+
+          echo "=== Running synthesis ==="
+          /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t
+          SYNTH_EXIT=$?
+          echo "Synthesis exit code: $SYNTH_EXIT"
+          if [ $SYNTH_EXIT -ne 0 ]; then
+            echo "=== Synthesis failed - showing report ==="
+            cat /tmp/tp/output_files/t.syn.rpt 2>/dev/null | tail -30
+          fi
+          exit $SYNTH_EXIT
