@@ -40,6 +40,34 @@ jobs:
             command -v git && command -v pwsh && command -v python3 && echo "All tools present"
           '
 
+      - name: Diagnose Quartus library linkage
+        run: |
+          docker run --rm \
+            -e HOME=/tmp \
+            -e QUARTUS_ROOTDIR=/opt/altera/quartus \
+            -e QUARTUS_DISABLE_DDM=1 \
+            "$IMAGE" bash -c '
+              echo "=== quartus_syn wrapper script ==="
+              head -50 /opt/altera/quartus/bin/quartus_syn
+              echo "=== Bundled glibc? ==="
+              find /opt/altera -name "libc.so*" -o -name "libc-*.so" 2>/dev/null
+              echo "=== LD_LIBRARY_PATH from wrapper ==="
+              # Source the wrapper env and show what gets set
+              grep -i "LD_LIBRARY_PATH" /opt/altera/quartus/bin/quartus_syn 2>/dev/null || true
+              grep -ri "LD_LIBRARY_PATH" /opt/altera/quartus/linux64/ 2>/dev/null | head -5 || true
+              echo "=== ldd on quartus_syn binary ==="
+              # Find the actual binary (not wrapper)
+              SYNBIN=$(find /opt/altera/quartus -name "quartus_syn" -type f ! -path "*/bin/*" 2>/dev/null | head -1)
+              if [ -z "$SYNBIN" ]; then
+                SYNBIN=$(readlink -f /opt/altera/quartus/bin/quartus_syn 2>/dev/null)
+              fi
+              echo "Binary: $SYNBIN"
+              file "$SYNBIN" 2>/dev/null
+              ldd "$SYNBIN" 2>/dev/null | grep -i libc || true
+              echo "=== /opt/altera/quartus/linux64/lib* libc ==="
+              ls /opt/altera/quartus/linux64/lib*/libc* 2>/dev/null || echo "No bundled libc in linux64/lib"
+            '
+
       - name: Test synthesis (no crash = pass)
         run: |
           # License server is not reachable from github.com runners, so synthesis
@@ -66,8 +94,8 @@ jobs:
               printf "set_global_assignment -name VERILOG_FILE top.v\n" >> t.qsf
 
               echo "=== Running synthesis ==="
-              /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1
-              SYNTH_EXIT=$?
+              LD_DEBUG=libs /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | grep -E "libc|realloc|calling init|SIGABRT" | tail -20
+              SYNTH_EXIT=${PIPESTATUS[0]}
               echo "Synthesis exit code: $SYNTH_EXIT"
 
               if [ $SYNTH_EXIT -eq 134 ] || [ $SYNTH_EXIT -gt 128 ]; then
