@@ -115,38 +115,30 @@ jobs:
             ' || true
           echo "Step completed"
 
-      - name: "Test 5: Stock image with --privileged"
+      - name: "Test 5: Stock image WITHOUT libudev (key test)"
         run: |
-          docker run --rm --privileged \
-            -e HOME=/tmp \
-            -e LM_LICENSE_FILE=1717@localhost \
-            -e QUARTUS_DISABLE_DDM=1 \
-            --shm-size=1g \
-            -v /tmp/tp:/tmp/tp \
-            "$STOCK" bash -c '
-              cd /tmp/tp
-              /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | tail -5
-              echo "Exit: ${PIPESTATUS[0]}"
-            ' || true
-          echo "Step completed"
-
-      - name: "Test 6: Custom image with --net=host (fix permissions)"
-        run: |
-          docker run --rm --net=host \
+          docker run --name no-libudev-stock "$STOCK" bash -c '
+            rm -f /usr/lib/x86_64-linux-gnu/libudev.so* /lib/x86_64-linux-gnu/libudev.so* 2>/dev/null || true
+            echo "libudev removed from stock image"
+          '
+          docker commit no-libudev-stock test-stock-no-libudev
+          docker rm no-libudev-stock
+          docker run --rm \
             -e HOME=/tmp \
             -e LM_LICENSE_FILE=1717@localhost \
             -e QUARTUS_ROOTDIR=/opt/altera/quartus \
             -e QUARTUS_DISABLE_DDM=1 \
             --shm-size=1g \
             -v /tmp/tp:/tmp/tp \
-            "$IMAGE" bash -c '
+            test-stock-no-libudev bash -c '
               cd /tmp/tp
+              ls -la /lib/x86_64-linux-gnu/libudev* /usr/lib/x86_64-linux-gnu/libudev* 2>/dev/null || echo "libudev: confirmed removed"
               /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | tail -20
               echo "Exit: ${PIPESTATUS[0]}"
             ' || true
           echo "Step completed"
 
-      - name: "Test 7: Stock image with --net=host (full output)"
+      - name: "Test 6: Stock image with --net=host (full output)"
         run: |
           docker run --rm --net=host \
             -e HOME=/tmp \

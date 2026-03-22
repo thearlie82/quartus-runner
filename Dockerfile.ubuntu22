@@ -1,5 +1,5 @@
 # Two-stage build: copy Quartus from official image into Ubuntu 22.04
-# to avoid glibc 2.39 realloc() bug in Ubuntu 24.04
+# Remove libudev to prevent realloc() crash in Quartus (libudev init triggers it)
 
 ARG QUARTUS_TAG=agilex3
 # Use patched 25.3.1 image (fixes DDM bug, no need for QUARTUS_DISABLE_DDM)
@@ -43,6 +43,11 @@ RUN cp /tmp/*.crt /usr/local/share/ca-certificates/ && \
     update-ca-certificates && \
     rm /tmp/*.crt
 
+# Remove libudev - its init triggers realloc() crash in Quartus
+# when running in containerized/namespaced environments (Docker, K8s)
+RUN rm -f /usr/lib/x86_64-linux-gnu/libudev.so* /lib/x86_64-linux-gnu/libudev.so* 2>/dev/null; \
+    echo "libudev removed"
+
 # Verify glibc version is 2.35 (Ubuntu 22.04)
 RUN ldd --version 2>&1 | head -1 && \
     ldd --version 2>&1 | grep -q "2.35" && echo "glibc 2.35 confirmed" || \
@@ -53,4 +58,4 @@ ENV QUARTUS_VERSION=25.3
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 ENV LANG=en_US.UTF-8
 
-USER 1001
+# No USER directive - K8s assigns UID via SCC/securityContext
