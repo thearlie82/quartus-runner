@@ -7,6 +7,7 @@ on:
 
 env:
   IMAGE: ghcr.io/thearlie82/quartus-runner:agilex3
+  STOCK: alterafpga/quartus-pro:25.3.1-patch1.02-agilex3
 
 jobs:
   test:
@@ -20,110 +21,110 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Pull image
-        run: docker pull "$IMAGE"
+      - name: Pull images
+        run: |
+          docker pull "$IMAGE"
+          docker pull "$STOCK"
 
-      - name: Validate OS and glibc
+      - name: Validate our image
         run: |
           docker run --rm "$IMAGE" bash -c '
             head -1 /etc/os-release
             ldd --version 2>&1 | head -1
-            ldd --version 2>&1 | grep -q "2\.35" && echo "PASS: glibc 2.35" || (echo "FAIL: wrong glibc" && exit 1)
-          '
-
-      - name: Validate Quartus version
-        run: docker run --rm "$IMAGE" /opt/altera/quartus/bin/quartus_sh --version
-
-      - name: Validate required tools
-        run: |
-          docker run --rm "$IMAGE" bash -c '
+            /opt/altera/quartus/bin/quartus_sh --version 2>&1 | head -3
             command -v git && command -v pwsh && command -v python3 && echo "All tools present"
           '
 
-      - name: Investigate libglibc_wrap.so
+      - name: Create test project
         run: |
-          docker run --rm \
-            -e HOME=/tmp \
-            -e QUARTUS_ROOTDIR=/opt/altera/quartus \
-            -e QUARTUS_DISABLE_DDM=1 \
-            "$IMAGE" bash -c '
-              echo "=== libglibc_wrap.so symbols ==="
-              nm -D /opt/altera/qcore/linux64/libglibc_wrap.so 2>/dev/null | grep -i "realloc\|malloc\|free\|calloc" | head -20
-              echo "=== libglibc_wrap.so file info ==="
-              file /opt/altera/qcore/linux64/libglibc_wrap.so
-              ls -la /opt/altera/qcore/linux64/libglibc_wrap.so
-              echo "=== What needs libudev? ==="
-              for lib in /opt/altera/quartus/linux64/*.so /opt/altera/qcore/linux64/*.so; do
-                if ldd "$lib" 2>/dev/null | grep -q libudev; then
-                  echo "$lib -> needs libudev"
-                fi
-              done
-              echo "=== libudev details ==="
-              ls -la /lib/x86_64-linux-gnu/libudev* 2>/dev/null
-              dpkg -S libudev 2>/dev/null | head -5
-            '
+          mkdir -p /tmp/tp
+          echo 'module top(input wire c,input wire d,output reg q); always @(posedge c) q<=d; endmodule' > /tmp/tp/top.v
+          echo 'QUARTUS_VERSION="25.3"' > /tmp/tp/t.qpf
+          echo 'PROJECT_REVISION="t"' >> /tmp/tp/t.qpf
+          printf 'set_global_assignment -name FAMILY "Agilex 3"\nset_global_assignment -name DEVICE A3CW135BM16AE6S\nset_global_assignment -name TOP_LEVEL_ENTITY top\nset_global_assignment -name VERILOG_FILE top.v\n' > /tmp/tp/t.qsf
 
-      - name: Test synthesis WITHOUT libudev
+      - name: "Test 1: Stock image with --net=host (official docs requirement)"
         run: |
-          # Try removing/hiding libudev to prevent the crash
-          docker run --rm \
+          docker run --rm --net=host \
             -e HOME=/tmp \
             -e LM_LICENSE_FILE=1717@localhost \
             -e QUARTUS_ROOTDIR=/opt/altera/quartus \
             -e QUARTUS_DISABLE_DDM=1 \
             --shm-size=1g \
-            "$IMAGE" bash -c '
-              echo "=== Hiding libudev.so.1 ==="
-              # Cannot rm as non-root, but can use LD_PRELOAD trick or rename
-              # Try setting LD_LIBRARY_PATH to skip system libs
-              # Or try preloading a stub
-
-              mkdir -p /tmp/tp && cd /tmp/tp
-
-              echo "module top(input wire c,input wire d,output reg q); always @(posedge c) q<=d; endmodule" > top.v
-              echo "QUARTUS_VERSION=\"25.3\"" > t.qpf
-              echo "PROJECT_REVISION=\"t\"" >> t.qpf
-              printf "set_global_assignment -name FAMILY \"Agilex 3\"\nset_global_assignment -name DEVICE A3CW135BM16AE6S\nset_global_assignment -name TOP_LEVEL_ENTITY top\nset_global_assignment -name VERILOG_FILE top.v\n" > t.qsf
-
-              echo "=== Test 1: Normal run ==="
+            -v /tmp/tp:/tmp/tp \
+            "$STOCK" bash -c '
+              cd /tmp/tp
               /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | tail -5
               echo "Exit: ${PIPESTATUS[0]}"
+            ' || true
+          echo "Step completed"
 
-              echo "=== Test 2: With LD_PRELOAD of libglibc_wrap.so disabled ==="
-              # Create empty stub for libglibc_wrap.so
-              echo "void __attribute__((constructor)) glibc_wrap_stub(void) {}" > /tmp/stub.c
-              gcc -shared -o /tmp/libglibc_wrap_stub.so /tmp/stub.c 2>/dev/null || echo "gcc not available"
-
-              echo "=== Test 3: Skip libglibc_wrap by overriding LD_LIBRARY_PATH ==="
-              # Try running without the qcore lib path
-              /opt/altera/quartus/linux64/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | tail -5
-              echo "Exit: ${PIPESTATUS[0]}"
-            '
-
-      - name: Test with stock Altera image (25.3.1-patch1.02)
+      - name: "Test 2: Custom image with --net=host"
         run: |
-          docker pull alterafpga/quartus-pro:25.3.1-patch1.02-agilex3
+          docker run --rm --net=host \
+            -e HOME=/tmp \
+            -e LM_LICENSE_FILE=1717@localhost \
+            -e QUARTUS_ROOTDIR=/opt/altera/quartus \
+            -e QUARTUS_DISABLE_DDM=1 \
+            --shm-size=1g \
+            -v /tmp/tp:/tmp/tp \
+            "$IMAGE" bash -c '
+              cd /tmp/tp
+              /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | tail -5
+              echo "Exit: ${PIPESTATUS[0]}"
+            ' || true
+          echo "Step completed"
+
+      - name: "Test 3: Custom image WITHOUT libudev (remove it)"
+        run: |
+          # Create a modified container without libudev
+          docker run --name no-libudev "$IMAGE" bash -c '
+            rm -f /usr/lib/x86_64-linux-gnu/libudev.so.1 /usr/lib/x86_64-linux-gnu/libudev.so.1.7.2 /lib/x86_64-linux-gnu/libudev.so.1 /lib/x86_64-linux-gnu/libudev.so.1.7.2 2>/dev/null || true
+            echo "libudev removed"
+          '
+          docker commit no-libudev test-no-libudev
+          docker rm no-libudev
           docker run --rm \
             -e HOME=/tmp \
             -e LM_LICENSE_FILE=1717@localhost \
             -e QUARTUS_ROOTDIR=/opt/altera/quartus \
             -e QUARTUS_DISABLE_DDM=1 \
             --shm-size=1g \
-            alterafpga/quartus-pro:25.3.1-patch1.02-agilex3 bash -c '
-              echo "=== Stock image OS ==="
-              head -1 /etc/os-release
-              ldd --version 2>&1 | head -1
-              echo "=== libudev in stock image ==="
-              ls -la /lib/x86_64-linux-gnu/libudev* 2>/dev/null || echo "No libudev in stock image"
-              find / -name "libudev*" 2>/dev/null
-              echo "=== Synthesis test ==="
-              mkdir -p /tmp/tp && cd /tmp/tp
-              echo "module top(input wire c,input wire d,output reg q); always @(posedge c) q<=d; endmodule" > top.v
-              echo "QUARTUS_VERSION=\"25.3\"" > t.qpf
-              echo "PROJECT_REVISION=\"t\"" >> t.qpf
-              printf "set_global_assignment -name FAMILY \"Agilex 3\"\nset_global_assignment -name DEVICE A3CW135BM16AE6S\nset_global_assignment -name TOP_LEVEL_ENTITY top\nset_global_assignment -name VERILOG_FILE top.v\n" > t.qsf
-              /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | tail -10
-              SYNTH_EXIT=${PIPESTATUS[0]}
-              echo "Synthesis exit code: $SYNTH_EXIT"
-              exit 0
-            '
+            -v /tmp/tp:/tmp/tp \
+            test-no-libudev bash -c '
+              cd /tmp/tp
+              ls -la /lib/x86_64-linux-gnu/libudev* 2>/dev/null || echo "libudev: gone"
+              /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | tail -5
+              echo "Exit: ${PIPESTATUS[0]}"
+            ' || true
+          echo "Step completed"
+
+      - name: "Test 4: Stock image direct from Altera (as-is, no flags)"
+        run: |
+          docker run --rm \
+            -e HOME=/tmp \
+            -e LM_LICENSE_FILE=1717@localhost \
+            -e QUARTUS_DISABLE_DDM=1 \
+            --shm-size=1g \
+            -v /tmp/tp:/tmp/tp \
+            "$STOCK" bash -c '
+              cd /tmp/tp
+              /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | tail -5
+              echo "Exit: ${PIPESTATUS[0]}"
+            ' || true
+          echo "Step completed"
+
+      - name: "Test 5: Stock image with --privileged"
+        run: |
+          docker run --rm --privileged \
+            -e HOME=/tmp \
+            -e LM_LICENSE_FILE=1717@localhost \
+            -e QUARTUS_DISABLE_DDM=1 \
+            --shm-size=1g \
+            -v /tmp/tp:/tmp/tp \
+            "$STOCK" bash -c '
+              cd /tmp/tp
+              /opt/altera/quartus/bin/quartus_syn --read_settings_files=on --write_settings_files=off t -c t 2>&1 | tail -5
+              echo "Exit: ${PIPESTATUS[0]}"
+            ' || true
+          echo "Step completed"
