@@ -1,0 +1,27 @@
+name: quartus_runner
+services:
+  quartus:
+    build:
+      dockerfile: Dockerfile.ubuntu22
+      context: ..
+      args:
+        QUARTUS_TAG: ${QUARTUS_TAG:-agilex3}
+
+    container_name: quartus_runner
+    hostname: quartus_runner
+
+    environment:
+      - HOME=/tmp
+      - LM_LICENSE_FILE=1717@adt-quartuslic.ad.adt.com.au
+      - QUARTUS_ROOTDIR=/opt/altera/quartus
+      - QUARTUS_DISABLE_DDM=1
+
+    volumes:
+      - ../:/workspace
+
+    working_dir: /workspace
+    shm_size: "1g"
+
+    stdin_open: true
+    tty: true
+    restart: unless-stopped

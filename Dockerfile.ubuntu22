@@ -2,8 +2,7 @@
 # Remove libudev to prevent realloc() crash in Quartus (libudev init triggers it)
 
 ARG QUARTUS_TAG=agilex3
-# Use patched 25.3.1 image (fixes DDM bug, no need for QUARTUS_DISABLE_DDM)
-FROM alterafpga/quartus-pro:25.3.1-patch1.02-${QUARTUS_TAG} AS quartus-source
+FROM alterafpga/quartuspro-v25.1:${QUARTUS_TAG} AS quartus-source
 
 FROM ubuntu:22.04
 
@@ -54,7 +53,7 @@ RUN ldd --version 2>&1 | head -1 && \
     (echo "ERROR: Expected glibc 2.35" && exit 1)
 
 ENV QUARTUS_ROOTDIR=/opt/altera/quartus
-ENV QUARTUS_VERSION=25.3
+ENV QUARTUS_VERSION=25.1
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 ENV LANG=en_US.UTF-8
 

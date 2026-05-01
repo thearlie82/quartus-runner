@@ -1,0 +1,17 @@
+{
+  "name": "Quartus Runner",
+  "dockerComposeFile": "docker-compose.yaml",
+  "service": "quartus",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+  "customizations": {
+    "vscode": {
+      "extensions": [],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "chat.disableAIFeatures": true
+      }
+    }
+  },
+  "postAttachCommand": "echo '=== Quartus Runner Container ===' && /opt/altera/quartus/bin/quartus_sh --version 2>&1 | head -3"
+}
