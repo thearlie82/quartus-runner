@@ -4,11 +4,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      quartus_tag:
-        description: "Quartus base image tag (e.g. agilex3, agilex5, agilex7)"
-        required: false
-        default: "agilex3"
 
 env:
   REGISTRY: ghcr.io
@@ -24,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        quartus_tag: [agilex3]
+        quartus_tag: [agilex3, agilex5, agilex7]
     steps:
       - uses: actions/checkout@v4
 
