@@ -86,7 +86,7 @@ if ($Run) {
 
     # Build docker run arguments
     $dockerArgs = @(
-        "run", "--rm", "-it",
+        "run", "-it",
         "--name", $ContainerName,
         "--hostname", $ContainerName,
         "-e", "HOME=/tmp",

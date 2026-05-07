@@ -9,6 +9,13 @@ COPY adt-rootcert01-ca.crt /tmp/
 COPY setup.sh /tmp/
 RUN chmod +x /tmp/setup.sh && /tmp/setup.sh && rm /tmp/setup.sh
 
+# Questa FPGA Edition (not yet enabled in production)
+# COPY QuestaSetup-25.1.0.129-linux.run /tmp/
+# COPY install-questa.sh /tmp/
+# RUN chmod +x /tmp/install-questa.sh && /tmp/install-questa.sh
+# ENV QUESTA_ROOTDIR=/opt/altera/questa_fe
+# ENV PATH=$QUESTA_ROOTDIR/bin:$PATH
+
 # Set Quartus environment
 ENV QUARTUS_ROOTDIR=/opt/altera/quartus
 # Workaround glibc 2.39 mremap_chunk heap corruption with Quartus

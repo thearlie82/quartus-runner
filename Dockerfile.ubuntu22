@@ -13,7 +13,13 @@ COPY adt-rootcert01-ca.crt /tmp/
 COPY ubuntu22-setup.sh /tmp/
 RUN chmod +x /tmp/ubuntu22-setup.sh && /tmp/ubuntu22-setup.sh && rm /tmp/ubuntu22-setup.sh
 
+# Questa FPGA Edition (not yet enabled in production)
+# COPY QuestaSetup-25.1.0.129-linux.run /tmp/
+# COPY install-questa.sh /tmp/
+# RUN chmod +x /tmp/install-questa.sh && /tmp/install-questa.sh
+
 ENV QUARTUS_ROOTDIR=/opt/altera/quartus
+# ENV QUESTA_ROOTDIR=/opt/altera/questa_fe
 ENV QUARTUS_VERSION=25.1
 ENV NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt
 ENV LANG=en_US.UTF-8

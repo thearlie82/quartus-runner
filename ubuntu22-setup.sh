@@ -5,7 +5,7 @@ set -e
 apt-get update
 apt-get install -y --no-install-recommends \
     git ca-certificates python3 \
-    libx11-6 libxext6 libxrender1 libxtst6 libxi6 \
+    libx11-6 libxext6 libxrender1 libxtst6 libxi6 libxft2 \
     libfreetype6 libfontconfig1 \
     libglib2.0-0 libsm6 libice6 \
     libnss3 libdbus-1-3 \
